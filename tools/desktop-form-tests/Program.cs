@@ -53,11 +53,31 @@ internal static class Program
      float scale=form.CurrentAutoScaleDimensions.Width/96f;
      var brand=Descendants(form).OfType<Label>().Single(x=>x.Text=="开服工坊");var sidebar=brand.Parent.Parent;
      int frameWidth=form.Width-form.ClientSize.Width;
-     Require(Math.Abs(form.ClientSize.Width-(int)Math.Round((1250-frameWidth)*scale))<=2,"Main window client width did not follow design DPI");
+     // Native handle creation can cap a top-level window at MaxWindowTrackSize
+     // on a small runner desktop, even though our hidden test never raises Shown.
+     // Use an independent plain Form with the design dimensions to observe that
+     // OS constraint; the main form must still match its DPI-scaled client width.
+     using(var probe=new Form{Font=new Font("Microsoft YaHei UI",9),Size=new Size(1250,850),MinimumSize=new Size(1050,720),StartPosition=FormStartPosition.CenterScreen}) {
+      probe.AutoScaleDimensions=new SizeF(96,96);probe.AutoScaleMode=AutoScaleMode.Dpi;
+      PrepareHiddenLayout(probe);
+      Console.WriteLine("DPI="+form.CurrentAutoScaleDimensions.Width+" main="+form.Size+" client="+form.ClientSize+" probe="+probe.Size+" probeClient="+probe.ClientSize+" unboundedClientWidth="+(int)Math.Round((1250-frameWidth)*scale)+" workingArea="+Screen.FromControl(form).WorkingArea+" maxTrack="+SystemInformation.MaxWindowTrackSize);
+      Require(Math.Abs(form.ClientSize.Width-probe.ClientSize.Width)<=2,"Main window client width did not match the DPI-scaled design with native window constraints");
+     }
      Require(Math.Abs(sidebar.Width-(int)Math.Round(190*scale))<=1,"Sidebar width did not follow design DPI");
      var text=TextRenderer.MeasureText(brand.Text,brand.Font,Size.Empty,TextFormatFlags.NoPadding|TextFormatFlags.SingleLine);
      Require(brand.ClientSize.Width>=text.Width+brand.Padding.Horizontal&&brand.ClientSize.Height>=text.Height+brand.Padding.Vertical,"Brand text is clipped at "+form.CurrentAutoScaleDimensions.Width+" DPI: available="+brand.ClientSize+", measured="+text);
      Console.WriteLine("DPI="+form.CurrentAutoScaleDimensions.Width+" main="+form.Size+" sidebar="+sidebar.Width+" brand="+brand.ClientSize+" text="+text);
+     // Exercise the real working-area handler without displaying a window.
+     var area=Screen.FromControl(form).WorkingArea;var beforeSize=form.Size;var beforeMinimum=form.MinimumSize;
+     typeof(Form).GetMethod("OnShown",Private).Invoke(form,new object[]{EventArgs.Empty});LayoutChildren(form);
+     var expectedSize=new Size(Math.Min(beforeSize.Width,area.Width),Math.Min(beforeSize.Height,area.Height));
+     var expectedMinimum=new Size(Math.Min(beforeMinimum.Width,area.Width),Math.Min(beforeMinimum.Height,area.Height));
+     Console.WriteLine("Hidden Shown fit: before="+beforeSize+" after="+form.Size+" minimum="+form.MinimumSize+" area="+area+" visible="+form.Visible);
+     Require(!form.Visible,"Working-area event test must not display a window");
+     Require(form.MinimumSize==expectedMinimum,"Minimum size was not clamped to the current working area");
+     Require(form.Size==expectedSize&&area.Contains(form.Bounds),"Shown handler did not fit the main window inside its working area");
+     Require(Math.Abs(sidebar.Width-(int)Math.Round(190*scale))<=1,"Fitting the window changed the sidebar DPI scale");
+     Require(brand.ClientSize.Width>=text.Width+brand.Padding.Horizontal&&brand.ClientSize.Height>=text.Height+brand.Padding.Vertical,"Working-area fit clipped the brand text");
     }
    });
    Test("Preset picker and version buttons reserve their measured text and padding",()=>{
