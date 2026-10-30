@@ -1,0 +1,129 @@
+name: Windows build and portable release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Install .NET SDK 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0, Node24
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build, run offline core tests and package
+        run: |
+          ./build.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+      - name: Framework 4.8 process, hidden-form and long-path regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cases = @(
+            @{project='tools/windows-tests/ServerWorkbench.WindowsTests.csproj'; exe='tools/windows-tests/bin/Release/net48/ServerWorkbench.WindowsTests.exe'; output='process'},
+            @{project='tools/desktop-form-tests/ServerWorkbench.FormTests.csproj'; exe='tools/desktop-form-tests/bin/Release/net48/ServerWorkbench.FormTests.exe'; output=$null},
+            @{project='tools/windows-longpath-tests/ServerWorkbench.LongPathTests.csproj'; exe='tools/windows-longpath-tests/bin/Release/net48/ServerWorkbench.LongPathTests.exe'; output='longpath'}
+          )
+          foreach ($case in $cases) {
+            dotnet build $case.project -c Release --nologo
+            if ($LASTEXITCODE -ne 0) { throw "Test build failed: $($case.project)" }
+            if ($case.output) {
+              & $case.exe (Join-Path $env:RUNNER_TEMP $case.output)
+            } else {
+              & $case.exe
+            }
+            if ($LASTEXITCODE -ne 0) { throw "Regression failed: $($case.exe)" }
+          }
+      - name: Packaging preserves data and excludes it from ZIPs
+        run: |
+          python -m unittest discover -s tools/tests -p test_package.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging regression failed.' }
+      - name: Verify release archives and SHA256
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $expected = @('ServerWorkbench-win-x64-v0.1.zip','ServerWorkbench-source-v0.1.zip')
+          $lines = @(Get-Content -LiteralPath dist/SHA256SUMS.txt | Where-Object { $_.Trim() })
+          if ($lines.Count -ne $expected.Count) { throw 'Unexpected checksum entries.' }
+          foreach ($line in $lines) {
+            $parts = $line.Trim() -split '\s+', 2
+            if ($parts.Count -ne 2 -or $parts[0] -notmatch '^[a-f0-9]{64}$' -or $parts[1] -notin $expected) { throw 'Invalid checksum entry.' }
+            $actual = (Get-FileHash -LiteralPath (Join-Path dist $parts[1]) -Algorithm SHA256).Hash
+            if ($actual -ne $parts[0]) { throw 'Release archive checksum mismatch.' }
+          }
+          foreach ($name in $expected) {
+            $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $pwd "dist/$name"))
+            try {
+              foreach ($entry in $zip.Entries) {
+                if ($entry.FullName -match '(^|/)(Data|Backups|Worlds|Instances|Runtimes|Tunnels|Logs|bin|obj|__pycache__|\.git)(/|$)' -or $entry.FullName -match '\.(key|pem|pfx|p12)$') { throw 'Private or generated files found in archive.' }
+              }
+              if ($name -like '*win-x64*' -and 'ServerWorkbench/ServerWorkbench.exe' -notin $zip.Entries.FullName) { throw 'Portable EXE missing.' }
+            } finally { $zip.Dispose() }
+          }
+          @"
+          开服工坊 ServerWorkbench v0.1.0
+
+          下载 ServerWorkbench-win-x64-v0.1.zip，完整解压后运行 ServerWorkbench.exe。
+          管理器需要64位 Windows 和 .NET Framework 4.8/4.8.1；无需安装构建用 .NET SDK。
+          原有 Data、世界、Token 和备份不包含在发行包中。更新前保留自己的 Data 并备份世界。
+
+          此构建在 GitHub Windows Server 2025 runner 上通过离线核心测试、Framework BAT 子进程、隐藏窗体构建/布局、长路径和打包回归。
+          CI 未启动真实游戏或进行真实桌面点击；Win7 SP1/8.1/10/11 为管理器支持目标，各游戏与独立运行时兼容性单独判断。
+          既有 Windows 11 实测记录、游戏版本与未验证项请阅读发行包中的 测试报告.md 和 Windows验收.md。
+
+          Linux 公网中转工具：https://github.com/Cymene0n0/serverworkbench-relay
+          构建提交：$env:GITHUB_SHA
+          "@ | Set-Content -LiteralPath dist/release-notes.md -Encoding utf8NoBOM
+      - name: Upload verified portable and source packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2, Node24
+        with:
+          name: ServerWorkbench-win-x64
+          path: |
+            dist/ServerWorkbench-win-x64-v0.1.zip
+            dist/ServerWorkbench-source-v0.1.zip
+            dist/SHA256SUMS.txt
+            dist/release-notes.md
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Publish first v0.1.0 release without replacing existing assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            printf 'v0.1.0 already exists; keeping its tag and assets unchanged.\n'
+            exit 0
+          fi
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name ServerWorkbench-win-x64 --dir artifacts
+          gh release create v0.1.0 \
+            artifacts/ServerWorkbench-win-x64-v0.1.zip \
+            artifacts/ServerWorkbench-source-v0.1.zip \
+            artifacts/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title '开服工坊 ServerWorkbench v0.1.0' --notes-file artifacts/release-notes.md

@@ -1,0 +1,58 @@
+{
+  "fetchedDate": "2026-10-28",
+  "repository": "https://github.com/fatedier/frp",
+  "release": "https://github.com/fatedier/frp/releases/tag/v0.71.1",
+  "tag": "v0.71.1",
+  "publishedAt": "2026-10-14T09:52:45Z",
+  "draft": false,
+  "prerelease": false,
+  "license": {
+    "spdx": "Apache-2.0",
+    "url": "https://github.com/fatedier/frp/blob/v0.71.1/LICENSE"
+  },
+  "assets": [
+    {
+      "name": "frp_0.71.1_windows_amd64.zip",
+      "bytes": 14152383,
+      "sha256": "b90074b2b6a1d792a7a40f085ac6d276bcab2d1bc60201f8a86ca53ce65ce821",
+      "downloadUrl": "https://github.com/fatedier/frp/releases/download/v0.71.1/frp_0.71.1_windows_amd64.zip",
+      "assetApi": "https://api.github.com/repos/fatedier/frp/releases/assets/639945262"
+    },
+    {
+      "name": "frp_sha256_checksums.txt",
+      "bytes": 1645,
+      "sha256": "1f501ae59dffd4db6039d33dacbb23e2625fe44d188fe1ce456466e3386918ff",
+      "downloadUrl": "https://github.com/fatedier/frp/releases/download/v0.71.1/frp_sha256_checksums.txt",
+      "assetApi": "https://api.github.com/repos/fatedier/frp/releases/assets/639945062"
+    }
+  ],
+  "minimumWindows": {
+    "supportedComponent": "Windows 10+ x64 / Windows Server 2016+ x64",
+    "notSupportedComponent": [
+      "Windows 7 SP1",
+      "Windows 8.1"
+    ],
+    "source": "https://go.dev/wiki/MinimumRequirements",
+    "reason": "Go 1.21+ requires Windows 10+; frp v0.71.1 requires Go1.26.0+."
+  },
+  "securityAdvisories": [
+    {
+      "id": "GHSA-pq96-pwvg-vrr9",
+      "url": "https://github.com/fatedier/frp/security/advisories/GHSA-pq96-pwvg-vrr9",
+      "patched": "0.68.1",
+      "scope": "HTTP vhost routeByHTTPUser authentication bypass; this integration does not enable HTTP vhost."
+    },
+    {
+      "id": "GHSA-26gq-p25f-99cp",
+      "url": "https://github.com/fatedier/frp/security/advisories/GHSA-26gq-p25f-99cp",
+      "patched": "0.70.1",
+      "scope": "Optional SSH tunnel gateway denial of service; integration does not enable SSH gateway."
+    }
+  ],
+  "criticalSources": {
+    "tlsVerification": "https://github.com/fatedier/frp/blob/v0.71.1/pkg/transport/tls.go",
+    "envTemplate": "https://github.com/fatedier/frp/blob/v0.71.1/pkg/config/load.go",
+    "frpcExample": "https://github.com/fatedier/frp/blob/v0.71.1/conf/frpc_full_example.toml",
+    "frpsExample": "https://github.com/fatedier/frp/blob/v0.71.1/conf/frps_full_example.toml"
+  }
+}
