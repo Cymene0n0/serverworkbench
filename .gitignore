@@ -1,0 +1,15 @@
+tools/dotnet/
+tools/cli-home/
+tools/nuget/
+**/bin/
+**/obj/
+**/__pycache__/
+Data/
+dist/
+work/
+settings.json
+error.log
+*.pfx
+*.p12
+*.key
+*.dmp
